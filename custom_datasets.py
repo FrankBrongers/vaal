@@ -22,6 +22,12 @@ def cifar10_transformer():
                                 std=[0.5, 0.5, 0.5]),
        ])
 
+def coco_transformer():
+    transforms.Compose([transforms.RandomResizedCrop(224),
+                        transforms.ToTensor(),
+                        transforms.Normalize(mean=[0.5, 0.5, 0.5],
+                                             std=[0.5, 0.5, 0.5])])
+
 class CIFAR10(Dataset):
     def __init__(self, path):
         self.cifar10 = datasets.CIFAR10(root=path,
@@ -64,7 +70,7 @@ class CIFAR100(Dataset):
 
 class ImageNet(Dataset):
     def __init__(self, path):
-        self.imagenet = datasets.ImageFolder(root=path, transform=imagenet_transformer)
+        self.imagenet = datasets.ImageFolder(root=path, transform=imagenet_transformer())
 
     def __getitem__(self, index):
         if isinstance(index, numpy.float64):
@@ -75,3 +81,18 @@ class ImageNet(Dataset):
 
     def __len__(self):
         return len(self.imagenet)
+
+
+class KFuji(Dataset):
+    def __init__(self, image_path, json_path):
+        self.kfuji = datasets.CocoDetection(root=image_path, annFile=json_path, transform=coco_transformer())
+
+    def __getitem__(self, index):
+        if isinstance(index, numpy.float64):
+            index = index.astype(numpy.int64)
+        data, target = self.kfuji[index]
+
+        return data, target, index
+
+    def __len__(self):
+        return len(self.kfuji)

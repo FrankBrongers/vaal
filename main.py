@@ -7,6 +7,7 @@ import numpy as np
 import argparse
 import random
 import os
+import json
 
 from custom_datasets import *
 import model
@@ -61,6 +62,25 @@ def main(args):
         args.budget = 64060
         args.initial_budget = 128120
         args.num_classes = 1000
+
+    elif args.dataset == 'coco':
+        test_dataloader = data.DataLoader(
+                datasets.CocoDetection(args.image_path, args.data_path, transform=coco_transformer()),
+            drop_last=False, batch_size=args.batch_size)
+
+        train_dataset = KFuji(args.image_path, args.data_path)
+        # train_dataset = datasets.CocoDetection(args.image_path, args.data_path, transform=coco_transformer())
+        for i in range(len(train_dataset)):
+            ndata, nlabel, _ = train_dataset[i]
+        print(ndata, nlabel)
+        print(len(train_dataset))
+
+        args.num_val = int(np.ceil(len(train_dataset)*0.1))
+        args.num_images = len(train_dataset)
+        args.budget = int(np.ceil(len(train_dataset)*0.05))
+        args.initial_budget = int(np.ceil(len(train_dataset)*0.05))
+        args.num_classes = 1
+
     else:
         raise NotImplementedError
 
@@ -73,11 +93,11 @@ def main(args):
     val_sampler = data.sampler.SubsetRandomSampler(val_indices)
 
     # dataset with labels available
-    querry_dataloader = data.DataLoader(train_dataset, sampler=sampler, 
-            batch_size=args.batch_size, drop_last=True)
+    querry_dataloader = data.DataLoader(train_dataset, sampler=sampler,
+            batch_size=args.batch_size, drop_last=True, num_workers=0)
     val_dataloader = data.DataLoader(train_dataset, sampler=val_sampler,
-            batch_size=args.batch_size, drop_last=False)
-            
+            batch_size=args.batch_size, drop_last=False, num_workers=0)
+
     args.cuda = args.cuda and torch.cuda.is_available()
     solver = Solver(args, test_dataloader)
 
@@ -86,7 +106,7 @@ def main(args):
     current_indices = list(initial_indices)
 
     accuracies = []
-    
+
     for split in splits:
         # need to retrain all the models on the new images
         # re initialize and retrain the models
@@ -96,14 +116,14 @@ def main(args):
 
         unlabeled_indices = np.setdiff1d(list(all_indices), current_indices)
         unlabeled_sampler = data.sampler.SubsetRandomSampler(unlabeled_indices)
-        unlabeled_dataloader = data.DataLoader(train_dataset, 
+        unlabeled_dataloader = data.DataLoader(train_dataset,
                 sampler=unlabeled_sampler, batch_size=args.batch_size, drop_last=False)
 
         # train the models on the current data
         acc, vae, discriminator = solver.train(querry_dataloader,
                                                val_dataloader,
-                                               task_model, 
-                                               vae, 
+                                               task_model,
+                                               vae,
                                                discriminator,
                                                unlabeled_dataloader)
 
@@ -114,7 +134,7 @@ def main(args):
         sampled_indices = solver.sample_for_labeling(vae, discriminator, unlabeled_dataloader)
         current_indices = list(current_indices) + list(sampled_indices)
         sampler = data.sampler.SubsetRandomSampler(current_indices)
-        querry_dataloader = data.DataLoader(train_dataset, sampler=sampler, 
+        querry_dataloader = data.DataLoader(train_dataset, sampler=sampler,
                 batch_size=args.batch_size, drop_last=True)
 
     torch.save(accuracies, os.path.join(args.out_path, args.log_name))
@@ -122,4 +142,3 @@ def main(args):
 if __name__ == '__main__':
     args = arguments.get_args()
     main(args)
-
